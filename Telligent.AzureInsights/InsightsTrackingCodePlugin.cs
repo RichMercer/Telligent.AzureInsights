@@ -1,20 +1,24 @@
 ﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+using Microsoft.ApplicationInsights;
+using Microsoft.ApplicationInsights.Extensibility;
 using Telligent.DynamicConfiguration.Components;
-using Telligent.Evolution.Components;
 using Telligent.Evolution.Extensibility;
 using Telligent.Evolution.Extensibility.Api.Version1;
 using Telligent.Evolution.Extensibility.UI.Version1;
-using Telligent.Evolution.Extensibility.Urls.Version1;
 using Telligent.Evolution.Extensibility.Version1;
 
 namespace Telligent.AzureInsights
 {
-    public class InsightsTrackingCodePlugin : IPlugin, IHtmlHeaderExtension, IConfigurablePlugin
+    public class InsightsTrackingCodePlugin : IHtmlHeaderExtension, IConfigurablePlugin
     {
+        private static TelemetryClient _telemetry;
+
+        #region Properties
+
+        public static string InstrumentationKey => Configuration.GetString("instrumentationKey");
+
+        #endregion
+
         #region IPlugin Members
 
         public string Name => "Azure Insights Tracking Plugin";
@@ -23,6 +27,14 @@ namespace Telligent.AzureInsights
 
         public void Initialize()
         {
+            _telemetry = new TelemetryClient();
+            _telemetry.Context.InstrumentationKey = InstrumentationKey;
+
+            Apis.Get<IUsers>().Events.AfterCreate += args => LogInsightsEvent("UserCreated");
+            Apis.Get<IGroups>().Events.AfterCreate += args => LogInsightsEvent("GroupCreated");
+            Apis.Get<IForums>().Events.AfterCreate += args => LogInsightsEvent("ForumCreated");
+            Apis.Get<IForumThreads>().Events.AfterCreate += args => LogInsightsEvent("ForumThreadCreated");
+            Apis.Get<IForumReplies>().Events.AfterCreate += args => LogInsightsEvent("ForumReplyCreated");
         }
 
         #endregion
@@ -35,7 +47,7 @@ namespace Telligent.AzureInsights
 
         public string GetHeader(RenderTarget target)
         {
-            var instrKey = _configuration.GetString("instrumentationKey");
+            var instrKey = InstrumentationKey;
             if (string.IsNullOrEmpty(instrKey))
                 return string.Empty;
 
@@ -55,23 +67,40 @@ namespace Telligent.AzureInsights
 
         #region IConfigurablePlugin Members
 
-        IPluginConfiguration _configuration;
+        public static IPluginConfiguration Configuration;
 
-        public DynamicConfiguration.Components.PropertyGroup[] ConfigurationOptions
+        public PropertyGroup[] ConfigurationOptions
         {
             get
             {
                 var groups = new[] { new PropertyGroup("options", "Options", 0) };
                 groups[0].Properties.Add(new Property("instrumentationKey", "Instrumentation Key", PropertyType.String, 0, string.Empty));
+                groups[0].Properties.Add(new Property("logEvents", "Log Events", PropertyType.Bool, 1, false.ToString()));
                 return groups;
             }
         }
 
         public void Update(IPluginConfiguration configuration)
         {
-            _configuration = configuration;
+            Configuration = configuration;
         }
 
         #endregion
+
+        private void LogInsightsEvent(string eventName)
+        {
+            if (!Configuration.GetBool("logEvents"))
+                return;
+
+            try
+            {
+                _telemetry.TrackEvent(eventName);
+            }
+            catch (Exception ex)
+            {
+                new EventLog().Write($"Unable to log Azure Insights Event. {ex.Message}",
+                    new EventLogEntryWriteOptions { Category = "Azure Insights", EventType = "Error" });
+            }
+        }
     }
 }
