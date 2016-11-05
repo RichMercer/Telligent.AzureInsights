@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Runtime.ExceptionServices;
 using Microsoft.ApplicationInsights;
 using Telligent.DynamicConfiguration.Components;
 using Telligent.Evolution.Extensibility;
@@ -34,6 +35,18 @@ namespace Telligent.AzureInsights
             Apis.Get<IForums>().Events.AfterCreate += args => LogInsightsEvent("ForumCreated");
             Apis.Get<IForumThreads>().Events.AfterCreate += args => LogInsightsEvent("ForumThreadCreated");
             Apis.Get<IForumReplies>().Events.AfterCreate += args => LogInsightsEvent("ForumReplyCreated");
+
+            AppDomain.CurrentDomain.FirstChanceException += CurrentDomainOnFirstChanceException;
+        }
+
+        private void CurrentDomainOnFirstChanceException(object sender, FirstChanceExceptionEventArgs firstChanceExceptionEventArgs)
+        {
+            try
+            {
+                // Handle any exceptions here to prevent recursive exceptions which will terminate the application.
+                _telemetry.TrackException(firstChanceExceptionEventArgs.Exception);
+            }
+            catch { }
         }
 
         #endregion
