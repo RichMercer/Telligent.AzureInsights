@@ -88,6 +88,8 @@
     </Reference>
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="Filters\ForbiddenFilter.cs" />
+    <Compile Include="Filters\NotFoundFilter.cs" />
     <Compile Include="Filters\SyntheticRequestFilter.cs" />
     <Compile Include="Filters\FastFilter.cs" />
     <Compile Include="Filters\SocketFilter.cs" />

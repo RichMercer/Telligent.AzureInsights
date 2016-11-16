@@ -1,15 +1,15 @@
-﻿using Microsoft.ApplicationInsights.Channel;
+﻿using System.Net;
+using Microsoft.ApplicationInsights.Channel;
 using Microsoft.ApplicationInsights.DataContracts;
 using Microsoft.ApplicationInsights.Extensibility;
-using Telligent.Evolution.Extensibility.Api.Version1;
 
 namespace Telligent.AzureInsights.Filters
 {
-    public class SocketFilter : ITelemetryProcessor
+    public class ForbiddenFilter : ITelemetryProcessor
     {
         private ITelemetryProcessor Next { get; set; }
 
-        public SocketFilter(ITelemetryProcessor next)
+        public ForbiddenFilter(ITelemetryProcessor next)
         {
             Next = next;
         }
@@ -18,7 +18,7 @@ namespace Telligent.AzureInsights.Filters
         {
             var request = item as RequestTelemetry;
 
-            if (request != null && request.Url.LocalPath.Contains("/socket.ashx"))
+            if (request != null && int.Parse(request.ResponseCode) == (int)HttpStatusCode.Forbidden)
             {
                 return;
             }

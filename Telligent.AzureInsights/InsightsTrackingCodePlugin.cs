@@ -12,6 +12,12 @@ namespace Telligent.AzureInsights
     public class InsightsTrackingCodePlugin : IHtmlHeaderExtension, IConfigurablePlugin
     {
         private static TelemetryClient _telemetry;
+        private IUsers _usersService;
+        private IGroups _groupsService;
+        private IForums _forumsService;
+        private IForumThreads _threadsService;
+        private IForumReplies _repliesService;
+
 
         #region Properties
 
@@ -27,28 +33,43 @@ namespace Telligent.AzureInsights
 
         public void Initialize()
         {
-            _telemetry = new TelemetryClient();
-            _telemetry.Context.InstrumentationKey = InstrumentationKey;
+            _usersService = Apis.Get<IUsers>();
+            _groupsService = Apis.Get<IGroups>();
+            _forumsService = Apis.Get<IForums>();
+            _threadsService = Apis.Get<IForumThreads>();
+            _repliesService = Apis.Get<IForumReplies>();
 
-            Apis.Get<IUsers>().Events.AfterCreate += args => LogInsightsEvent("UserCreated");
-            Apis.Get<IGroups>().Events.AfterCreate += args => LogInsightsEvent("GroupCreated");
-            Apis.Get<IForums>().Events.AfterCreate += args => LogInsightsEvent("ForumCreated");
-            Apis.Get<IForumThreads>().Events.AfterCreate += args => LogInsightsEvent("ForumThreadCreated");
-            Apis.Get<IForumReplies>().Events.AfterCreate += args => LogInsightsEvent("ForumReplyCreated");
+            _telemetry = new TelemetryClient {Context = {InstrumentationKey = InstrumentationKey}};
 
-            AppDomain.CurrentDomain.FirstChanceException += CurrentDomainOnFirstChanceException;
+            _usersService.Events.AfterCreate += args => LogInsightsEvent("UserCreated");
+            _groupsService.Events.AfterCreate += args => LogInsightsEvent("GroupCreated");
+            _forumsService.Events.AfterCreate += args => LogInsightsEvent("ForumCreated");
+            _threadsService.Events.AfterCreate += args => LogInsightsEvent("ForumThreadCreated");
+            _repliesService.Events.AfterCreate += args => LogInsightsEvent("ForumReplyCreated");
+
+            Apis.Get<IUsers>().Events.AfterIdentify += EventsOnAfterIdentify;
+
+            AppDomain.CurrentDomain.UnhandledException += CurrentDomainOnUnhandledException;
         }
 
-        private void CurrentDomainOnFirstChanceException(object sender, FirstChanceExceptionEventArgs firstChanceExceptionEventArgs)
+        private void EventsOnAfterIdentify(UserAfterIdentifyEventArgs e)
+        {
+            if (e.Username != _usersService.AnonymousUserName)
+            {
+                _telemetry.Context.User.AuthenticatedUserId = e.Id.ToString();
+            }
+        }
+
+        private void CurrentDomainOnUnhandledException(object sender, UnhandledExceptionEventArgs unhandledExceptionEventArgs)
         {
             try
             {
                 // Handle any exceptions here to prevent recursive exceptions which will terminate the application.
-                _telemetry.TrackException(firstChanceExceptionEventArgs.Exception);
+                _telemetry.TrackException((Exception) unhandledExceptionEventArgs.ExceptionObject);
             }
             catch { }
         }
-
+        
         #endregion
 
         #region IHtmlHeaderExtension Members
@@ -63,7 +84,7 @@ namespace Telligent.AzureInsights
             if (string.IsNullOrEmpty(instrKey))
                 return string.Empty;
 
-            var trackingScript = @"<script type=""text/javascript"">  var appInsights=window.appInsights||function(config){{    function r(config){{t[config]=function(){{var i=arguments;t.queue.push(function(){{t[config].apply(t,i)}})}}}}var t={{config:config}},u=document,e=window,o=""script"",s=u.createElement(o),i,f;for(s.src=config.url||""//az416426.vo.msecnd.net/scripts/a/ai.0.js"",u.getElementsByTagName(o)[0].parentNode.appendChild(s),t.cookie=u.cookie,t.queue=[],i=[""Event"",""Exception"",""Metric"",""PageView"",""Trace""];i.length;)r(""track""+i.pop());return r(""setAuthenticatedUserContext""),r(""clearAuthenticatedUserContext""),config.disableExceptionTracking||(i=""onerror"",r(""_""+i),f=e[i],e[i]=function(config,r,u,e,o){{var s=f&&f(config,r,u,e,o);return s!==!0&&t[""_""+i](config,r,u,e,o),s}}),t    }}({{        instrumentationKey:""{0}""    }});           window.appInsights=appInsights;    appInsights.trackPageView(); {1}</script>";
+            var trackingScript = @"<script type=""text/javascript"">  var appInsights=window.appInsights||function(config){{ function r(config){{t[config]=function(){{var i=arguments;t.queue.push(function(){{t[config].apply(t,i)}})}}}}var t={{config:config}},u=document,e=window,o=""script"",s=u.createElement(o),i,f;for(s.src=config.url||""//az416426.vo.msecnd.net/scripts/a/ai.0.js"",u.getElementsByTagName(o)[0].parentNode.appendChild(s),t.cookie=u.cookie,t.queue=[],i=[""Event"",""Exception"",""Metric"",""PageView"",""Trace""];i.length;)r(""track""+i.pop());return r(""setAuthenticatedUserContext""),r(""clearAuthenticatedUserContext""),config.disableExceptionTracking||(i=""onerror"",r(""_""+i),f=e[i],e[i]=function(config,r,u,e,o){{var s=f&&f(config,r,u,e,o);return s!==!0&&t[""_""+i](config,r,u,e,o),s}}),t    }}({{        instrumentationKey:""{0}""    }});           window.appInsights=appInsights;    appInsights.trackPageView(); {1}</script>";
             var userTracking = string.Empty;
 
             var currentUser = Apis.Get<IUsers>().AccessingUser;
